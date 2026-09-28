@@ -16,12 +16,25 @@ Foundation models are becoming invaluable tools in medicine. Despite their promi
 <br>
 <br>
 
+> **This fork.** This repository is a local, from-scratch replication and
+> extension of the original MDAgents implementation, built to run against
+> Groq (free tier) and Gemini instead of OpenAI, with real bug fixes, a
+> lightweight RAG stage, the paper's moderator-feedback loop, support for 7
+> of the paper's 10 datasets, and two additions beyond the paper: a
+> calibrated confidence score and a structured, evidence-cited explanation
+> object attached to every answer. See [ARCHITECTURE.md](ARCHITECTURE.md)
+> for exactly what runs at each pipeline stage, what differs from the paper,
+> and known limitations. **If you're picking this project up to integrate a
+> new component (e.g. a digital twin module), start with
+> [HANDOFF.md](HANDOFF.md) instead of this file.**
+
 ## Quick Start
 
-Create a new virtual environment, e.g. with conda
+Create a virtual environment:
 
 ```bash
-~$ conda create -n mdagents python>=3.9
+~$ python -m venv .venv
+~$ source .venv/Scripts/activate   # Windows: .venv\Scripts\activate
 ```
 
 Install the required packages:
@@ -29,38 +42,24 @@ Install the required packages:
 ~$ pip install -r requirements.txt
 ```
 
-Activate the environment:
+Set up API keys — copy `.env.example` to `.env` and fill in the keys you
+have:
 ```bash
-~$ conda activate mdagents
+~$ cp .env.example .env
+```
+```
+GROQ_API_KEY=...      # used for every --model that isn't a gemini model
+GENAI_API_KEY=...     # used when --model contains "gemini" (required for image/video questions)
+FAST_MODEL=openai/gpt-oss-20b   # cheap/fast model for recruiter & difficulty-check calls
 ```
 
-Set up API keys:
+Fetch a small real sample of a dataset (no manual downloads needed — this
+hits public APIs directly):
 ```bash
-~$ export openai_api_key="your_openai_api_key_here"
-~$ export genai_api_key="your_genai_api_key_here"
+~$ python prepare_data.py --dataset medqa       # or pubmedqa, ddxplus, symcat, medbullets, pmcvqa, pathvqa
 ```
-
-Replace your_openai_api_key_here and your_genai_api_key_here with your actual API keys.
-Prepare the data:
-
-```bash
-~$ mkdir -p ./data
-```
-
-Place your JSON data files in the ./data directory. Ensure that the files are named according to the dataset they represent, e.g., medqa.json, pubmedqa.json, etc.
-
-Your directory structure should look like this:
-```
-mdagents/
-├── data/
-│   ├── medqa.json
-│   ├── pubmedqa.json
-│   └── ... (other dataset files)
-├── main.py
-├── utils.py
-├── requirements.txt
-└── README.md
-```
+This writes `data/<dataset>/{test,train}.jsonl` (plus `data/<dataset>/images/`
+for the two image datasets).
 
 <br>
 
@@ -72,16 +71,36 @@ mdagents/
 
 <br>
 
-1) MedQA: [https://github.com/jind11/MedQA](https://github.com/jind11/MedQA)
-2) MedMCQA: [https://github.com/medmcqa/medmcqa](https://github.com/medmcqa/medmcqa)
-3) PubMedQA: [https://github.com/pubmedqa/pubmedqa](https://github.com/pubmedqa/pubmedqa)
-4) DDXPlus: [https://github.com/mila-iqia/ddxplus](https://github.com/mila-iqia/ddxplus)
-5) SymCat: [https://github.com/teliov/SymCat-to-synthea](https://github.com/teliov/SymCat-to-synthea)
-6) JAMA & Medbullets: [https://github.com/xiaoman-zhang/PMC-VQA](https://github.com/xiaoman-zhang/PMC-VQA)
-7) PMC-VQA: [https://github.com/xiaoman-zhang/PMC-VQA](https://github.com/xiaoman-zhang/PMC-VQA)
-8) Path-VQA: [https://github.com/UCSD-AI4H/PathVQA](https://github.com/UCSD-AI4H/PathVQA)
-9) MIMIC-CXR: [https://github.com/baeseongsu/mimic-cxr-vqa](https://github.com/baeseongsu/mimic-cxr-vqa)
-10) MedVidQA: [https://github.com/deepaknlp/MedVidQACL](https://github.com/deepaknlp/MedVidQACL)
+Of the paper's 10 datasets, **7 are implemented** here (fetchable via
+`prepare_data.py`); 3 are out of scope for the reasons below.
+
+1) MedQA — `GBaker/MedQA-USMLE-4-options` on Hugging Face
+2) PubMedQA — `qiaojin/PubMedQA` (`pqa_labeled` config)
+3) DDXPlus — `aai530-group6/ddxplus` on Hugging Face
+4) SymCat — public GitHub mirror of a symcat.com scrape ([details/caveats in ARCHITECTURE.md](ARCHITECTURE.md))
+5) Medbullets — `HanjieChen/ChallengeClinicalQA` (official repo)
+6) PMC-VQA — `RadGenome/PMC-VQA` on Hugging Face (image + text)
+7) Path-VQA — `flaviagiammarino/path-vqa` on Hugging Face (image + text, yes/no subset only, matching the paper)
+
+**Not implemented:**
+- **JAMA Clinical Challenge** — the dataset's own source repo explicitly
+  does not redistribute this data due to JAMA's license; no legitimate
+  public mirror exists.
+- **MIMIC-CXR** — requires a credentialed PhysioNet account (signed data-use
+  agreement); out of scope without a user who already holds that access.
+- **MedVidQA** — video processing is significant additional scope, deferred
+  for now.
+
+Original dataset sources, for reference:
+[MedQA](https://github.com/jind11/MedQA) ·
+[MedMCQA](https://github.com/medmcqa/medmcqa) ·
+[PubMedQA](https://github.com/pubmedqa/pubmedqa) ·
+[DDXPlus](https://github.com/mila-iqia/ddxplus) ·
+[SymCat](https://github.com/teliov/SymCat-to-synthea) ·
+[PMC-VQA](https://github.com/xiaoman-zhang/PMC-VQA) ·
+[Path-VQA](https://github.com/UCSD-AI4H/PathVQA) ·
+[MIMIC-CXR](https://github.com/baeseongsu/mimic-cxr-vqa) ·
+[MedVidQA](https://github.com/deepaknlp/MedVidQACL)
 
 <br>
 
@@ -96,8 +115,58 @@ mdagents/
 ## Inference
 
 ```bash
-~$ python3 main.py --model {gpt-3.5, gpt-4, gpt-4v, gpt-4o, gemini-pro, gemini-pro-vision} --dataset {medqa, pubmedqa, ddxplus, jama, symcat, medbullets, jama, pmc-vqa, path-vqa, mimic-cxr, medvidqa}
+~$ python main.py --model openai/gpt-oss-120b --dataset medqa --difficulty adaptive --num_samples 20
 ```
+
+`--model` is any Groq model id (e.g. `openai/gpt-oss-120b`, `openai/gpt-oss-20b`,
+`qwen/qwen3.8-27b`) or any Gemini model id containing `gemini` (required for
+`pmcvqa`/`pathvqa`, which need image input). `--dataset` is one of
+`medqa, pubmedqa, ddxplus, symcat, medbullets, pmcvqa, pathvqa`.
+`--difficulty` is `adaptive` (the paper's default — an LLM classifies each
+question's complexity) or a fixed `basic`/`intermediate`/`advanced` for
+ablations. Add `--no-use_rag` or `--no-use_moderator_review` to turn off
+those stages for ablation comparisons (both default on). `--num_rounds`/
+`--num_turns` (default 5/5, matching the paper) cap the moderate-path debate
+— lower them (e.g. `2`/`3`) for cost-bounded runs, since agents will keep
+"wanting to talk" to affirm agreement, not just to resolve disagreement.
+Set `ENSEMBLE_TEMPERATURES="0.0,0.5,1.0"` (env var) to sample the final
+decision at multiple temperatures and take a real majority vote, matching
+the paper's temperature-ensemble technique (default is a single sample).
+
+Every result now also carries a `confidence` score (agreement across
+independent opinions) and a structured `explanation` (reasoning, cited
+evidence, per-specialist attribution) — see
+[ARCHITECTURE.md](ARCHITECTURE.md#confidence-and-structured-explainability).
+Results — including per-question predictions, confidence, and the full
+explanation — are written incrementally (after every question, not just at
+the end) to `output/<model>_<dataset>_<difficulty>.json`, so a crash never
+loses already-completed work.
+
+To run the same evaluation across several datasets in one go:
+```bash
+~$ N=10 NUM_ROUNDS=2 NUM_TURNS=3 bash run_benchmark.sh
+```
+Then check how well-calibrated the confidence scores actually are (does "80%
+confident" mean "correct ~80% of the time"?):
+```bash
+~$ python evaluate_calibration.py output/*.json
+```
+
+<br>
+
+## Interactive Demo
+
+For a single-case, step-by-step walkthrough (complexity check → recruitment
+→ collaboration → final decision) instead of a batch benchmark run:
+
+```bash
+~$ streamlit run demo_app.py
+```
+
+Opens at `http://localhost:8501`. Pick one of the built-in cases or write
+your own, choose a model, and click **Run Analysis**. Each step of the
+pipeline is rendered live, ending with a confidence badge, cited evidence
+(with links), and a per-specialist/per-team agree/disagree breakdown.
 
 <br>
 
